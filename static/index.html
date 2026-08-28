@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Habit System AI · Diseña quién quieres ser</title>
+  <script>
+    try {
+      if (localStorage.getItem("habitfy_theme") === "dark") {
+        document.documentElement.setAttribute("data-theme", "dark");
+      }
+    } catch (e) {}
+  </script>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%234f7cff'/%3E%3Ctext x='16' y='23' font-size='18' text-anchor='middle' fill='white'%3E%E2%9C%93%3C/text%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="/static/css/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="#/" aria-label="Inicio">Habit System AI</a>
+      <nav class="nav" aria-label="Navegación principal">
+        <a href="#/" data-route="dashboard" class="nav-link">Inicio</a>
+        <a href="#/morning" data-route="morning" class="nav-link">🌙 Mañana</a>
+        <a href="#/review" data-route="review" class="nav-link">Revisión</a>
+        <a href="#/stats" data-route="stats" class="nav-link">Estadísticas</a>
+        <a href="#/settings" data-route="settings" class="nav-link">Ajustes</a>
+        <a href="#/feedback" data-route="feedback" class="nav-link">💬 Feedback</a>
+      </nav>
+      <button class="btn btn-primary btn-new" id="btn-new-habit">+ Diseñar un hábito</button>
+    </div>
+  </header>
+
+  <main id="app" class="container" tabindex="-1"></main>
+
+  <div id="modal-root"></div>
+  <div id="toast-root" class="toast-root" aria-live="polite"></div>
+
+  <template id="tpl-modal">
+    <div class="modal-backdrop" role="presentation">
+      <div class="modal" role="dialog" aria-modal="true">
+        <div class="modal-head">
+          <h2 class="modal-title"></h2>
+          <button class="icon-btn modal-close" aria-label="Cerrar">✕</button>
+        </div>
+        <div class="modal-body"></div>
+        <div class="modal-foot"></div>
+      </div>
+    </div>
+  </template>
+
+  <script src="/static/js/api.js"></script>
+  <script src="/static/js/format.js"></script>
+  <script src="/static/js/charts.js"></script>
+  <script src="/static/js/app.js"></script>
+</body>
+</html>
