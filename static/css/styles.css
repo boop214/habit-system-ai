@@ -29,6 +29,8 @@ html, body {
   color: var(--text);
   line-height: 1.5;
   font-size: 16px;
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
 a { color: var(--primary); text-decoration: none; }
@@ -42,6 +44,7 @@ a:hover { text-decoration: underline; }
   background: rgba(255, 255, 255, .92);
   backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--border);
+  padding-top: env(safe-area-inset-top);
 }
 .topbar-inner {
   max-width: 960px;

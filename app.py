@@ -176,6 +176,16 @@ def static_files(filename):
     return send_from_directory(STATIC_DIR, filename)
 
 
+@app.route("/service-worker.js")
+def service_worker():
+    # Served from the web root so its default scope is "/" and it can control
+    # the application entry point ("/") as well as every /static/ asset.
+    resp = send_from_directory(STATIC_DIR, "service-worker.js")
+    resp.headers["Service-Worker-Allowed"] = "/"
+    resp.headers["Cache-Control"] = "no-cache"
+    return resp
+
+
 @app.route("/api/state")
 def api_state():
     conn = get_conn()

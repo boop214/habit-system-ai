@@ -15,6 +15,12 @@ def index():
 def static_files(filename):
     return send_from_directory(os.path.join(BASE, "static"), filename)
 
+@app.route("/service-worker.js")
+def service_worker():
+    resp = send_from_directory(os.path.join(BASE, "static"), "service-worker.js")
+    resp.headers["Service-Worker-Allowed"] = "/"
+    return resp
+
 def run_server():
     app.run(host="127.0.0.1", port=5561, debug=False, use_reloader=False)
 

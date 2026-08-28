@@ -151,7 +151,14 @@ const services = (() => {
   /* ---- Identities CRUD ---- */
 
   async function listIdentities() {
-    return habitDB.listIdentities();
+    const identities = await habitDB.listIdentities();
+    const nowDt = NOW();
+    const allHabits = await habitDB.listHabits();
+    return identities.map((ident) => {
+      const votes = identity.identityVotes(ident, nowDt);
+      const habitCount = allHabits.filter((h) => h.identity_id === ident.id && h.active).length;
+      return { ...ident, votes, habit_count: habitCount };
+    });
   }
 
   async function getIdentity(id) {

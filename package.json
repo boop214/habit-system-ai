@@ -1,0 +1,10 @@
+{
+  "name": "habit-system-ai",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Habit System AI — PWA vanilla (HTML/CSS/JS) con IndexedDB. Sin framework ni bundler.",
+  "scripts": {
+    "start": "python app.py",
+    "test:pwa": "python tests/run_pwa.py"
+  }
+}
