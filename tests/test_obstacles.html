@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>obstacles.js — Tests</title>
+  <style>
+    body { font-family: monospace; margin: 20px; background: #111; color: #eee; }
+    .pass { color: #4ade80; }
+    .fail { color: #f87171; }
+    #log { white-space: pre-wrap; line-height: 1.6; }
+    #summary { font-size: 1.2em; margin-top: 20px; padding: 10px; border-top: 1px solid #333; }
+  </style>
+</head>
+<body>
+  <h2>obstacles.js — Tests</h2>
+  <div id="log"></div>
+  <div id="summary"></div>
+
+  <script src="/static/js/obstacles.js"></script>
+  <script>
+    "use strict";
+    const log = document.getElementById("log");
+    const summary = document.getElementById("summary");
+    let passed = 0, failed = 0;
+
+    function assert(cond, msg) {
+      if (cond) { passed++; log.innerHTML += `<span class="pass">  PASS</span> ${msg}\n`; }
+      else { failed++; log.innerHTML += `<span class="fail">  FAIL</span> ${msg}\n`; }
+    }
+    function assertEq(a, b, msg) {
+      assert(a === b, `${msg} — expected ${JSON.stringify(b)}, got ${JSON.stringify(a)}`);
+    }
+    function assertDeep(a, b, msg) {
+      assert(JSON.stringify(a) === JSON.stringify(b),
+        `${msg} — expected ${JSON.stringify(b)}, got ${JSON.stringify(a)}`);
+    }
+    function assertContains(haystack, needle, msg) {
+      assert(haystack.includes(needle), `${msg} — "${haystack}" does not contain "${needle}"`);
+    }
+
+    function baseHabit(overrides) {
+      const h = {
+        name: "Leer",
+        type: "duration",
+        unit: "min",
+        target_value: 20,
+        target_unit: "min",
+        frequency_type: "weekly",
+        frequency_target: 4,
+        cue: "Después de cenar",
+        start_date: "2026-01-01",
+      };
+      if (overrides) Object.assign(h, overrides);
+      return h;
+    }
+
+    function run() {
+      /* ============================================================ */
+      /*  OBSTACLE_TYPES constant                                     */
+      /* ============================================================ */
+      log.innerHTML += "\n=== Constants ===\n";
+      assertEq(obstacles.OBSTACLE_TYPES.hard, "Es demasiado difícil", "OBSTACLE_TYPES.hard");
+      assertEq(obstacles.OBSTACLE_TYPES.time, "El momento no funciona", "OBSTACLE_TYPES.time");
+      assertEq(obstacles.OBSTACLE_TYPES.other, "Otro", "OBSTACLE_TYPES.other");
+      assertEq(Object.keys(obstacles.OBSTACLE_TYPES).length, 8, "OBSTACLE_TYPES: 8 types");
+
+      /* ============================================================ */
+      /*  obstacleLabel                                                */
+      /* ============================================================ */
+      assertEq(obstacles.obstacleLabel("hard"), "Es demasiado difícil", "obstacleLabel: hard");
+      assertEq(obstacles.obstacleLabel("unknown"), "unknown", "obstacleLabel: unknown → passthrough");
+
+      /* ============================================================ */
+      /*  formatValue                                                  */
+      /* ============================================================ */
+      assertEq(obstacles.formatValue(20, "min"), "20 min", "formatValue: 20 min");
+      assertEq(obstacles.formatValue(5, null), "5", "formatValue: no unit");
+      assertEq(obstacles.formatValue(1.0, "kg"), "1 kg", "formatValue: float .0 → int");
+
+      /* ============================================================ */
+      /*  hard — duration (base habit: 20 min)                         */
+      /* ============================================================ */
+      log.innerHTML += "\n=== suggestion: hard (duration) ===\n";
+      const sHard = obstacles.redesignSuggestion(baseHabit(), "hard");
+      assertEq(sHard.type, "hard", "hard: type");
+      assertEq(sHard.message, "Podemos hacerlo más fácil.", "hard: message");
+      assertContains(sHard.current, "20 min", "hard: current contains '20 min'");
+      assertContains(sHard.proposed, "5 min", "hard: proposed contains '5 min'");
+      assertEq(sHard.apply.target_value, 5, "hard: apply.target_value = 5");
+      assertEq(sHard.apply.minimum_value, 2, "hard: apply.minimum_value = 2");
+      assertEq(sHard.apply.minimum_unit, "min", "hard: apply.minimum_unit = 'min'");
+
+      /* ============================================================ */
+      /*  hard — quantity (10 páginas)                                 */
+      /* ============================================================ */
+      log.innerHTML += "\n=== suggestion: hard (quantity) ===\n";
+      const sHardQty = obstacles.redesignSuggestion(
+        baseHabit({ type: "quantity", unit: "páginas", target_value: 10, target_unit: "páginas" }),
+        "hard"
+      );
+      assertEq(sHardQty.apply.target_value, 3, "hard_quantity: target_value = 3");
+      assertEq(sHardQty.apply.minimum_value, 1, "hard_quantity: minimum_value = 1");
+      assertContains(sHardQty.apply.minimum_description, "página", "hard_quantity: description contains 'página'");
+
+      /* ============================================================ */
+      /*  hard — boolean (frequency_target: 4)                         */
+      /* ============================================================ */
+      log.innerHTML += "\n=== suggestion: hard (boolean) ===\n";
+      const sHardBool = obstacles.redesignSuggestion(
+        baseHabit({ type: "boolean", frequency_target: 4 }),
+        "hard"
+      );
+      assertEq(sHardBool.apply.frequency_target, 3, "hard_boolean: frequency_target = 3");
+      assertContains(sHardBool.proposed, "Reducir la frecuencia", "hard_boolean: proposed contains 'Reducir'");
+
+      /* ============================================================ */
+      /*  forget                                                       */
+      /* ============================================================ */
+      log.innerHTML += "\n=== suggestion: forget ===\n";
+      const sForget = obstacles.redesignSuggestion(baseHabit(), "forget");
+      assertEq(sForget.type, "forget", "forget: type");
+      assertEq(sForget.message, "Necesitamos una señal más clara.", "forget: message");
+      assertEq(sForget.apply.cue, "Después de lavarme los dientes", "forget: apply.cue");
+      assertContains(sForget.proposed, "lavarme los dientes", "forget: proposed contains anchor");
+
+      /* ============================================================ */
+      /*  time                                                         */
+      /* ============================================================ */
+      log.innerHTML += "\n=== suggestion: time ===\n";
+      const sTime = obstacles.redesignSuggestion(baseHabit(), "time");
+      assertEq(sTime.type, "time", "time: type");
+      assertEq(sTime.message, "Probemos otro momento.", "time: message");
+      assertEq(sTime.apply.cue, "Después de lavarme los dientes", "time: apply.cue");
+      const timeKeys = sTime.fields.map(f => f.key);
+      assert(timeKeys.includes("cue"), "time: fields include 'cue'");
+      assert(timeKeys.includes("location"), "time: fields include 'location'");
+
+      /* ============================================================ */
+      /*  env                                                          */
+      /* ============================================================ */
+      log.innerHTML += "\n=== suggestion: env ===\n";
+      const sEnv = obstacles.redesignSuggestion(
+        baseHabit({ name: "Leer 2 páginas" }),
+        "env"
+      );
+      assertEq(sEnv.type, "env", "env: type");
+      assertEq(sEnv.message, "¿Qué puedes cambiar en tu entorno?", "env: message");
+      assertContains(sEnv.apply.environment, "Dejar", "env: apply.environment contains 'Dejar'");
+      assertContains(sEnv.apply.environment, "Leer 2 páginas", "env: contains habit name");
+
+      /* ============================================================ */
+      /*  notime                                                       */
+      /* ============================================================ */
+      log.innerHTML += "\n=== suggestion: notime ===\n";
+      const sNotime = obstacles.redesignSuggestion(baseHabit(), "notime");
+      assertEq(sNotime.type, "notime", "notime: type");
+      assertEq(sNotime.message, "Reduzcamos la fricción temporal.", "notime: message");
+      assertEq(sNotime.apply.target_value, 5, "notime: target_value = 5");
+
+      /* ============================================================ */
+      /*  energy                                                       */
+      /* ============================================================ */
+      log.innerHTML += "\n=== suggestion: energy ===\n";
+      const sEnergy = obstacles.redesignSuggestion(baseHabit(), "energy");
+      assertEq(sEnergy.type, "energy", "energy: type");
+      assert(sEnergy.message.startsWith("Quizá este hábito"), "energy: message starts with 'Quizá'");
+      assertEq(sEnergy.apply.cue, "A primera hora de la mañana", "energy: apply.cue");
+
+      /* ============================================================ */
+      /*  unclear                                                      */
+      /* ============================================================ */
+      log.innerHTML += "\n=== suggestion: unclear ===\n";
+      const sUnclear = obstacles.redesignSuggestion(
+        baseHabit({ name: "Aprender programación", description: "" }),
+        "unclear"
+      );
+      assertEq(sUnclear.type, "unclear", "unclear: type");
+      assertEq(sUnclear.message, "Vamos a convertirlo en una acción concreta.", "unclear: message");
+      assertEq(sUnclear.apply.name, "Aprender programación", "unclear: apply.name");
+      const unclearKeys = sUnclear.fields.map(f => f.key);
+      assert(unclearKeys.includes("name"), "unclear: fields include 'name'");
+      assert(unclearKeys.includes("description"), "unclear: fields include 'description'");
+
+      /* ============================================================ */
+      /*  other                                                        */
+      /* ============================================================ */
+      log.innerHTML += "\n=== suggestion: other ===\n";
+      const sOther = obstacles.redesignSuggestion(baseHabit(), "other");
+      assertEq(sOther.type, "other", "other: type");
+      assertEq(sOther.message, "¿Quieres rediseñar el hábito?", "other: message");
+      assertEq(sOther.apply, null, "other: apply is null");
+      assertEq(sOther.fields.length, 0, "other: fields is empty");
+
+      /* ============================================================ */
+      /*  Purity: habit not mutated                                    */
+      /* ============================================================ */
+      log.innerHTML += "\n=== Purity ===\n";
+      const habitCopy = baseHabit();
+      const originalJSON = JSON.stringify(habitCopy);
+      obstacles.redesignSuggestion(habitCopy, "hard");
+      assertEq(JSON.stringify(habitCopy), originalJSON, "purity: habit not mutated by redesignSuggestion");
+
+      /* ============================================================ */
+      /*  Edge cases                                                   */
+      /* ============================================================ */
+      log.innerHTML += "\n=== Edge cases ===\n";
+
+      // Duration with low value (value < 8, _easierValue returns 1)
+      const sHardLow = obstacles.redesignSuggestion(
+        baseHabit({ target_value: 5 }),
+        "hard"
+      );
+      assertEq(sHardLow.apply.target_value, 1, "hard_low_value: target_value = 1");
+      assertEq(sHardLow.apply.minimum_value, 2, "hard_low_value: minimum_value still 2 (duration)");
+
+      // Duration with value >= 8 but < 15
+      const sHardMid = obstacles.redesignSuggestion(
+        baseHabit({ target_value: 10 }),
+        "hard"
+      );
+      assertEq(sHardMid.apply.target_value, 3, "hard_mid_value: target_value = 3");
+
+      // Sessions type
+      const sHardSessions = obstacles.redesignSuggestion(
+        baseHabit({ type: "sessions", target_value: 20 }),
+        "hard"
+      );
+      assertEq(sHardSessions.apply.minimum_value, 1, "hard_sessions: minimum_value = 1");
+      assertContains(sHardSessions.apply.minimum_description, "sesión corta", "hard_sessions: description");
+
+      // Sessions type, low value (<= 15)
+      const sHardSessionsLow = obstacles.redesignSuggestion(
+        baseHabit({ type: "sessions", target_value: 10 }),
+        "hard"
+      );
+      assertEq(sHardSessionsLow.apply.target_value, undefined, "hard_sessions_low: no target_value change");
+      assertContains(sHardSessionsLow.proposed, "una sesión corta", "hard_sessions_low: proposed");
+
+      // Boolean with freq=1 (no reduction possible)
+      const sHardBoolOne = obstacles.redesignSuggestion(
+        baseHabit({ type: "boolean", frequency_target: 1 }),
+        "hard"
+      );
+      assertEq(sHardBoolOne.apply, null, "hard_bool_freq1: apply is null");
+      assertContains(sHardBoolOne.proposed, "Mantener", "hard_bool_freq1: proposed");
+
+      // No cue (time)
+      const sTimeNoCue = obstacles.redesignSuggestion(
+        baseHabit({ cue: "" }),
+        "time"
+      );
+      assertContains(sTimeNoCue.current, "sin señal definida", "time_no_cue: current");
+
+      // No cue (forget)
+      const sForgetNoCue = obstacles.redesignSuggestion(
+        baseHabit({ cue: "" }),
+        "forget"
+      );
+      assertContains(sForgetNoCue.current, "sin señal definida", "forget_no_cue: current");
+
+      // No cue (energy)
+      const sEnergyNoCue = obstacles.redesignSuggestion(
+        baseHabit({ cue: "" }),
+        "energy"
+      );
+      assertContains(sEnergyNoCue.current, "sin momento definido", "energy_no_cue: current");
+
+      // Unclear with no name
+      const sUnclearNoName = obstacles.redesignSuggestion(
+        baseHabit({ name: "", description: "" }),
+        "unclear"
+      );
+      assertEq(sUnclearNoName.apply.name, "Hacer algo concreto", "unclear_no_name: default name");
+
+      // Env with no location
+      const sEnvNoLoc = obstacles.redesignSuggestion(
+        baseHabit({ name: "Meditar", location: "" }),
+        "env"
+      );
+      assertContains(sEnvNoLoc.apply.environment, "a la vista", "env_no_loc: default place");
+
+      // Energy with sessions type (minimum_parts returns sessions description)
+      const sEnergySessions = obstacles.redesignSuggestion(
+        baseHabit({ type: "sessions", name: "Estirar" }),
+        "energy"
+      );
+      assertContains(sEnergySessions.minimum, "sesión corta", "energy_sessions: minimum");
+
+      /* ============================================================ */
+      /*  Summary                                                     */
+      /* ============================================================ */
+      summary.innerHTML = `<strong>${passed} passed, ${failed} failed</strong> (${passed + failed} total)`;
+      if (failed > 0) summary.style.color = "#f87171";
+      else summary.style.color = "#4ade80";
+      document.title = failed === 0 ? "PASS" : "FAIL";
+    }
+
+    run();
+  </script>
+</body>
+</html>
