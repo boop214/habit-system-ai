@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>periods.js — Tests</title>
+  <style>
+    body { font-family: monospace; margin: 20px; background: #111; color: #eee; }
+    .pass { color: #4ade80; }
+    .fail { color: #f87171; }
+    #log { white-space: pre-wrap; line-height: 1.6; }
+    #summary { font-size: 1.2em; margin-top: 20px; padding: 10px; border-top: 1px solid #333; }
+  </style>
+</head>
+<body>
+  <h2>periods.js — Tests</h2>
+  <div id="log"></div>
+  <div id="summary"></div>
+
+  <script src="/static/js/periods.js"></script>
+  <script>
+    "use strict";
+    const log = document.getElementById("log");
+    const summary = document.getElementById("summary");
+    let passed = 0, failed = 0;
+
+    function assert(cond, msg) {
+      if (cond) { passed++; log.innerHTML += `<span class="pass">  PASS</span> ${msg}\n`; }
+      else { failed++; log.innerHTML += `<span class="fail">  FAIL</span> ${msg}\n`; }
+    }
+    function assertEq(a, b, msg) {
+      assert(a === b, `${msg} — expected ${JSON.stringify(b)}, got ${JSON.stringify(a)}`);
+    }
+    function assertDeep(a, b, msg) {
+      assert(JSON.stringify(a) === JSON.stringify(b),
+        `${msg} — expected ${JSON.stringify(b)}, got ${JSON.stringify(a)}`);
+    }
+    function assertDateEq(a, b, msg) {
+      // Compare Date objects ignoring milliseconds
+      const eq = a.getFullYear() === b.getFullYear()
+        && a.getMonth() === b.getMonth()
+        && a.getDate() === b.getDate()
+        && a.getHours() === b.getHours()
+        && a.getMinutes() === b.getMinutes()
+        && a.getSeconds() === b.getSeconds();
+      assert(eq, `${msg} — expected ${b.toISOString()}, got ${a.toISOString()}`);
+    }
+
+    // Helper: create Date at local midnight or specific local time
+    function dt(y, mo, d, h, mi, s) {
+      return new Date(y, mo - 1, d, h || 0, mi || 0, s || 0);
+    }
+    function dateOnly(y, mo, d) {
+      return new Date(y, mo - 1, d);
+    }
+
+    function run() {
+      /* ============================================================ */
+      /*  test_start_of_week_monday                                   */
+      /* ============================================================ */
+      log.innerHTML += "\n=== startOfWeek ===\n";
+      const monday = dt(2026, 8, 10, 9, 30);
+      const sw = periods.startOfWeek(monday);
+      assertDateEq(sw, dt(2026, 8, 10, 0, 0), "start_of_week_monday: Monday stays same");
+
+      /* ============================================================ */
+      /*  test_start_of_week_any_day                                  */
+      /* ============================================================ */
+      const wed = dt(2026, 8, 12, 15, 0);
+      assertDateEq(periods.startOfWeek(wed), dt(2026, 8, 10, 0, 0),
+        "start_of_week: Wednesday → Monday");
+      const sunday = dt(2026, 8, 16, 23, 59);
+      assertDateEq(periods.startOfWeek(sunday), dt(2026, 8, 10, 0, 0),
+        "start_of_week: Sunday → Monday");
+
+      /* ============================================================ */
+      /*  test_this_week_end_is_now                                   */
+      /* ============================================================ */
+      log.innerHTML += "\n=== Periods ===\n";
+      const now1 = dt(2026, 8, 12, 18, 0);
+      const [twStart, twEnd] = periods.periodThisWeek(now1);
+      assertDateEq(twStart, dt(2026, 8, 10, 0, 0), "this_week start is Monday");
+      assertDateEq(twEnd, now1, "this_week end is now");
+
+      /* ============================================================ */
+      /*  test_previous_week                                          */
+      /* ============================================================ */
+      const [pwStart, pwEnd] = periods.periodPreviousWeek(now1);
+      assertDateEq(pwStart, dt(2026, 8, 3, 0, 0), "prev_week start");
+      assertDateEq(pwEnd, dt(2026, 8, 10, 0, 0), "prev_week end");
+
+      /* ============================================================ */
+      /*  test_this_month_and_previous                                */
+      /* ============================================================ */
+      const now2 = dt(2026, 8, 15, 10, 0);
+      const [tmStart, tmEnd] = periods.periodThisMonth(now2);
+      assertDateEq(tmStart, dt(2026, 8, 1, 0, 0), "this_month start");
+      assertDateEq(tmEnd, now2, "this_month end is now");
+
+      const [pmStart, pmEnd] = periods.periodPreviousMonth(now2);
+      assertDateEq(pmStart, dt(2026, 7, 1, 0, 0), "prev_month start");
+      assertDateEq(pmEnd, dt(2026, 8, 1, 0, 0), "prev_month end");
+
+      /* ============================================================ */
+      /*  test_previous_month_year_boundary                            */
+      /* ============================================================ */
+      const now3 = dt(2026, 1, 5, 0, 0);
+      const [pm2Start, pm2End] = periods.periodPreviousMonth(now3);
+      assertDateEq(pm2Start, dt(2025, 12, 1, 0, 0), "prev_month year boundary start");
+      assertDateEq(pm2End, dt(2026, 1, 1, 0, 0), "prev_month year boundary end");
+
+      /* ============================================================ */
+      /*  test_last_days_and_custom                                   */
+      /* ============================================================ */
+      const now4 = dt(2026, 8, 12, 12, 0);
+      const [ldStart, ldEnd] = periods.periodLastDays(now4, 7);
+      assertDateEq(ldStart, dt(2026, 8, 5, 12, 0), "last_days start");
+      assertDateEq(ldEnd, now4, "last_days end is now");
+
+      const [cStart, cEnd] = periods.periodCustom(now4, "2026-08-01", "2026-08-31");
+      assertDateEq(cStart, dt(2026, 8, 1, 0, 0), "custom start");
+      assertDateEq(cEnd, now4, "custom end capped at now");
+
+      /* ============================================================ */
+      /*  test_get_period_dispatch                                    */
+      /* ============================================================ */
+      log.innerHTML += "\n=== getPeriod ===\n";
+      const [gwStart] = periods.getPeriod("this_week", now4);
+      assertDateEq(gwStart, dt(2026, 8, 10, 0, 0), "getPeriod this_week");
+      const [gl30Start] = periods.getPeriod("last30", now4);
+      assertDateEq(gl30Start, dt(2026, 7, 13, 12, 0), "getPeriod last30");
+      const [gaStart] = periods.getPeriod("all", now4);
+      assertDateEq(gaStart, dt(1970, 1, 1, 0, 0), "getPeriod all");
+
+      /* ============================================================ */
+      /*  test_weeks_elapsed_min_one                                   */
+      /* ============================================================ */
+      log.innerHTML += "\n=== Arithmetic ===\n";
+      assertEq(periods.weeksElapsed("2026-08-10", dt(2026, 8, 10, 10, 0)), 1,
+        "weeks_elapsed same day → 1");
+      assertEq(periods.weeksElapsed("2026-08-10", dt(2026, 8, 16, 10, 0)), 1,
+        "weeks_elapsed 6 days → 1");
+      assertEq(periods.weeksElapsed("2026-08-10", dt(2026, 8, 23, 10, 0)), 2,
+        "weeks_elapsed 13 days → 2");
+
+      /* ============================================================ */
+      /*  test_months_elapsed                                          */
+      /* ============================================================ */
+      assertEq(periods.monthsElapsed("2026-01-15", dt(2026, 1, 20)), 1,
+        "months_elapsed same month → 1");
+      assertEq(periods.monthsElapsed("2026-01-15", dt(2026, 3, 1)), 3,
+        "months_elapsed Jan→Mar → 3");
+      assertEq(periods.monthsElapsed("2025-12-31", dt(2026, 1, 2)), 2,
+        "months_elapsed year boundary → 2");
+
+      /* ============================================================ */
+      /*  test_week_buckets_since_start                                */
+      /* ============================================================ */
+      log.innerHTML += "\n=== Buckets ===\n";
+      const now5 = dt(2026, 8, 12, 0, 0);
+      const wBuckets = periods.weekBuckets("2026-08-03", now5);
+      assertEq(wBuckets.length, 2, "week_buckets: 2 buckets");
+      assertDateEq(wBuckets[0].start, dt(2026, 8, 3, 0, 0), "week_bucket[0] start");
+      assertDateEq(wBuckets[1].start, dt(2026, 8, 10, 0, 0), "week_bucket[1] start");
+      assertDateEq(wBuckets[1].end, dt(2026, 8, 17, 0, 0), "week_bucket[1] end");
+
+      /* ============================================================ */
+      /*  test_day_buckets_covers_today                                */
+      /* ============================================================ */
+      const now6 = dt(2026, 8, 12, 22, 0);
+      const dBuckets = periods.dayBuckets("2026-01-01", now6, 3);
+      assertEq(dBuckets.length, 3, "day_buckets: 3 buckets");
+      assertDateEq(dBuckets[2].start, dt(2026, 8, 12, 0, 0), "day_bucket[2] start is today");
+      assertDateEq(dBuckets[2].end, dt(2026, 8, 13, 0, 0), "day_bucket[2] end is tomorrow");
+
+      /* ============================================================ */
+      /*  test_parse_dt_formats                                        */
+      /* ============================================================ */
+      log.innerHTML += "\n=== parseDt ===\n";
+      assertDateEq(periods.parseDt("2026-08-12T18:30"), dt(2026, 8, 12, 18, 30),
+        "parseDt YYYY-MM-DDTHH:MM");
+      assertDateEq(periods.parseDt("2026-08-12"), dt(2026, 8, 12, 0, 0),
+        "parseDt YYYY-MM-DD");
+      assertDateEq(periods.parseDt("2026-08-12 18:30:00"), dt(2026, 8, 12, 18, 30, 0),
+        "parseDt YYYY-MM-DD HH:MM:SS");
+
+      /* ============================================================ */
+      /*  Additional: month_buckets                                    */
+      /* ============================================================ */
+      log.innerHTML += "\n=== month_buckets ===\n";
+      const mBuckets = periods.monthBuckets("2026-07-15", dt(2026, 9, 1));
+      assertEq(mBuckets.length, 3, "month_buckets: Jul/Aug/Sep");
+      assertEq(mBuckets[0].label, "2026-07", "month_bucket[0] label");
+      assertEq(mBuckets[1].label, "2026-08", "month_bucket[1] label");
+      assertEq(mBuckets[2].label, "2026-09", "month_bucket[2] label");
+
+      /* ============================================================ */
+      /*  Additional: weekdayName / isoWeekday                         */
+      /* ============================================================ */
+      log.innerHTML += "\n=== Weekday helpers ===\n";
+      assertEq(periods.weekdayName(1), "L", "weekdayName(1) = L");
+      assertEq(periods.weekdayName(7), "D", "weekdayName(7) = D");
+      assertEq(periods.weekdayName(99), "?", "weekdayName(99) = ?");
+      assertEq(periods.isoWeekday(dt(2026, 8, 10)), 1, "isoWeekday Monday = 1");
+      assertEq(periods.isoWeekday(dt(2026, 8, 16)), 7, "isoWeekday Sunday = 7");
+
+      /* ============================================================ */
+      /*  Additional: nextWeekdayAt                                    */
+      /* ============================================================ */
+      const base = dt(2026, 8, 12, 10, 0); // Wednesday
+      const nextMon = periods.nextWeekdayAt(base, 1, 9, 0);
+      assertDateEq(nextMon, dt(2026, 8, 17, 9, 0), "nextWeekdayAt: Wed→Mon 9:00");
+      const nextWed1030 = periods.nextWeekdayAt(base, 3, 10, 30);
+      assertDateEq(nextWed1030, dt(2026, 8, 12, 10, 30), "nextWeekdayAt: Wed 10:00→Wed 10:30 same day");
+      const nextWed0800 = periods.nextWeekdayAt(base, 3, 8, 0);
+      assertDateEq(nextWed0800, dt(2026, 8, 19, 8, 0), "nextWeekdayAt: Wed 10:00→Wed 8:00 next week");
+
+      /* ============================================================ */
+      /*  Additional: calendarYearDays / previousMonthDays             */
+      /* ============================================================ */
+      log.innerHTML += "\n=== Calendar ===\n";
+      const cyd = periods.calendarYearDays(dt(2026, 3, 15));
+      assert(cyd.length >= 365, "calendarYearDays: at least 365 days");
+      assertDateEq(cyd[0], dt(2025, 12, 29), "calendarYearDays: grid starts Mon on/before Jan 1");
+
+      const pmd = periods.previousMonthDays(dt(2026, 8, 15), 0);
+      assertEq(pmd.days.length, 31, "previousMonthDays: Aug has 31 days");
+      assertDateEq(pmd.start, dt(2026, 8, 1), "previousMonthDays: start = Aug 1");
+      assertDateEq(pmd.end, dt(2026, 8, 31), "previousMonthDays: end = Aug 31");
+
+      const pmd1 = periods.previousMonthDays(dt(2026, 8, 15), 1);
+      assertEq(pmd1.days.length, 31, "previousMonthDays(1): Jul has 31 days");
+      assertDateEq(pmd1.start, dt(2026, 7, 1), "previousMonthDays(1): start = Jul 1");
+
+      /* ============================================================ */
+      /*  Summary                                                     */
+      /* ============================================================ */
+      summary.innerHTML = `<strong>${passed} passed, ${failed} failed</strong> (${passed + failed} total)`;
+      if (failed > 0) summary.style.color = "#f87171";
+      else summary.style.color = "#4ade80";
+
+      // Signal to headless runner
+      document.title = failed === 0 ? "PASS" : "FAIL";
+    }
+
+    run();
+  </script>
+</body>
+</html>

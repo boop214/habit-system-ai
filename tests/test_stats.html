@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>stats.js — Tests</title>
+  <style>
+    body { font-family: monospace; margin: 20px; background: #111; color: #eee; }
+    .pass { color: #4ade80; }
+    .fail { color: #f87171; }
+    #log { white-space: pre-wrap; line-height: 1.6; }
+    #summary { font-size: 1.2em; margin-top: 20px; padding: 10px; border-top: 1px solid #333; }
+  </style>
+</head>
+<body>
+  <h2>stats.js — Tests</h2>
+  <div id="log"></div>
+  <div id="summary"></div>
+
+  <script src="/static/js/periods.js"></script>
+  <script src="/static/js/stats.js"></script>
+  <script>
+    "use strict";
+    const log = document.getElementById("log");
+    const summary = document.getElementById("summary");
+    let passed = 0, failed = 0;
+
+    function assert(cond, msg) {
+      if (cond) { passed++; log.innerHTML += `<span class="pass">  PASS</span> ${msg}\n`; }
+      else { failed++; log.innerHTML += `<span class="fail">  FAIL</span> ${msg}\n`; }
+    }
+    function assertEq(a, b, msg) {
+      assert(a === b, `${msg} — expected ${JSON.stringify(b)}, got ${JSON.stringify(a)}`);
+    }
+    function assertDeep(a, b, msg) {
+      assert(JSON.stringify(a) === JSON.stringify(b),
+        `${msg} — expected ${JSON.stringify(b)}, got ${JSON.stringify(a)}`);
+    }
+    function assertDateEq(a, b, msg) {
+      const eq = a.getFullYear() === b.getFullYear()
+        && a.getMonth() === b.getMonth()
+        && a.getDate() === b.getDate()
+        && a.getHours() === b.getHours()
+        && a.getMinutes() === b.getMinutes();
+      assert(eq, `${msg} — expected ${b.toISOString()}, got ${a.toISOString()}`);
+    }
+
+    // Helpers matching Python test fixtures
+    const NOW   = new Date(2026, 7, 16, 23, 0);  // Sunday 23:00
+    const MONDAY = new Date(2026, 7, 10, 0, 0);   // Mon Aug 10
+    const PREV_MONDAY = new Date(2026, 7, 3, 0, 0); // Mon Aug 3
+
+    function ev(dayOffset, hour, minute, value, unit, duration) {
+      hour   = hour   !== undefined ? hour   : 12;
+      minute = minute !== undefined ? minute : 0;
+      value  = value  !== undefined ? value  : 1;
+      const d = new Date(MONDAY);
+      d.setDate(d.getDate() + dayOffset);
+      d.setHours(hour, minute, 0, 0);
+      const iso = d.getFullYear() + "-"
+        + String(d.getMonth() + 1).padStart(2, "0") + "-"
+        + String(d.getDate()).padStart(2, "0") + "T"
+        + String(d.getHours()).padStart(2, "0") + ":"
+        + String(d.getMinutes()).padStart(2, "0");
+      return { occurred_at: iso, value, unit: unit || null, duration: duration || null };
+    }
+
+    function prevEv(dayOffset, hour, minute, value) {
+      hour   = hour   !== undefined ? hour   : 12;
+      minute = minute !== undefined ? minute : 0;
+      value  = value  !== undefined ? value  : 1;
+      const d = new Date(PREV_MONDAY);
+      d.setDate(d.getDate() + dayOffset);
+      d.setHours(hour, minute, 0, 0);
+      const iso = d.getFullYear() + "-"
+        + String(d.getMonth() + 1).padStart(2, "0") + "-"
+        + String(d.getDate()).padStart(2, "0") + "T"
+        + String(d.getHours()).padStart(2, "0") + ":"
+        + String(d.getMinutes()).padStart(2, "0");
+      return { occurred_at: iso, value };
+    }
+
+    function baseHabit(overrides) {
+      const h = {
+        name: "Leer",
+        type: "duration",
+        unit: "min",
+        target_value: 10,
+        frequency_type: "weekly",
+        frequency_target: 4,
+        start_date: "2026-01-01",
+      };
+      if (overrides) Object.assign(h, overrides);
+      return h;
+    }
+
+    function dt(y, mo, d, h, mi) {
+      return new Date(y, mo - 1, d, h || 0, mi || 0, 0);
+    }
+
+    function run() {
+      /* ============================================================ */
+      /*  test_count_in_boundaries                                     */
+      /* ============================================================ */
+      log.innerHTML += "\n=== Counting ===\n";
+      const ci_events = [ev(0), ev(2)];
+      assertEq(stats.countIn(ci_events, MONDAY, dt(2026, 8, 11)), 1,
+        "count_in: 1 event in Mon..Tue");
+      assertEq(stats.countIn(ci_events, MONDAY, dt(2026, 8, 17)), 2,
+        "count_in: 2 events in Mon..Mon");
+      assertEq(stats.countIn(ci_events, MONDAY, MONDAY), 0,
+        "count_in: empty range → 0");
+
+      /* ============================================================ */
+      /*  test_multiple_events_same_day                                */
+      /* ============================================================ */
+      const me_events = [ev(0, 9), ev(0, 10), ev(0, 11), ev(1, 9)];
+      assertEq(stats.countOnDate(me_events, MONDAY), 3,
+        "count_on_date: 3 events on Monday");
+      const cbd = stats.countByDay(me_events);
+      const mondayKey = "2026-08-10";
+      assertEq(cbd[mondayKey], 3,
+        "count_by_day: 3 on Monday");
+
+      /* ============================================================ */
+      /*  test_this_week_count_vs_previous                             */
+      /* ============================================================ */
+      log.innerHTML += "\n=== Goals ===\n";
+      const tw_events = [ev(0), ev(1), ev(2)];
+      for (let i = 0; i < 4; i++) tw_events.push(prevEv(1));
+      const goal = stats.weekGoalStatus(baseHabit(), tw_events, NOW);
+      assertEq(goal.this_week, 3, "week_goal: this_week = 3");
+      assertEq(goal.prev_week, 4, "week_goal: prev_week = 4");
+      assertEq(goal.period, "week", "week_goal: period = week");
+      assertEq(goal.period_count, 3, "week_goal: period_count = 3");
+      assertEq(goal.percent, 75, "week_goal: percent = 75");
+      assertEq(goal.achieved, false, "week_goal: achieved = false");
+      assertEq(goal.remaining, 1, "week_goal: remaining = 1");
+
+      /* ============================================================ */
+      /*  test_weekly_goal_achieved                                    */
+      /* ============================================================ */
+      const wg_events = [ev(0), ev(1), ev(2), ev(3), ev(4)];
+      const wg = stats.weekGoalStatus(baseHabit(), wg_events, NOW);
+      assertEq(wg.achieved, true, "week_goal_achieved: true");
+      assertEq(wg.percent, 125, "week_goal_achieved: percent = 125");
+
+      /* ============================================================ */
+      /*  test_daily_frequency_goal                                    */
+      /* ============================================================ */
+      const df_habit = baseHabit({ frequency_type: "daily", frequency_target: 8 });
+      const df_events = [ev(6, 8), ev(6, 9), ev(6, 10)];
+      const df = stats.weekGoalStatus(df_habit, df_events, NOW);
+      assertEq(df.period, "day", "daily_freq: period = day");
+      assertEq(df.period_count, 3, "daily_freq: period_count = 3");
+      assertEq(df.target, 8, "daily_freq: target = 8");
+      assertEq(df.this_week, 3, "daily_freq: this_week = 3");
+
+      /* ============================================================ */
+      /*  test_specific_days_frequency_goal                             */
+      /* ============================================================ */
+      const sd_habit = baseHabit({ frequency_type: "specific_days", frequency_days: [1, 3, 5] });
+      const sd_events = [ev(0), ev(2), ev(4)];
+      const sd = stats.weekGoalStatus(sd_habit, sd_events, NOW);
+      assertEq(sd.period, "week", "specific_days: period = week");
+      assertEq(sd.target, 3, "specific_days: target = 3");
+      assertEq(sd.period_count, 3, "specific_days: period_count = 3");
+      assertEq(sd.achieved, true, "specific_days: achieved = true");
+
+      /* ============================================================ */
+      /*  test_monthly_frequency_goal                                  */
+      /* ============================================================ */
+      const mf_habit = baseHabit({ frequency_type: "monthly", frequency_target: 10 });
+      const mf_events = [ev(0), ev(2), ev(5)];
+      const mf = stats.weekGoalStatus(mf_habit, mf_events, NOW);
+      assertEq(mf.period, "month", "monthly_freq: period = month");
+      assertEq(mf.period_count, 3, "monthly_freq: period_count = 3");
+
+      /* ============================================================ */
+      /*  test_weekly_average_and_best                                 */
+      /* ============================================================ */
+      log.innerHTML += "\n=== Averages ===\n";
+      const wa_events = [prevEv(1), prevEv(3)];
+      for (let i = 0; i < 4; i++) wa_events.push(ev(i));
+      assertEq(stats.weeklyAverage(wa_events, "2026-08-03", NOW), 3.0,
+        "weekly_average: 3.0");
+      assertEq(stats.weeklyAverage(wa_events, "2026-08-03", NOW, 2), 3.0,
+        "weekly_average(weeks=2): 3.0");
+      assertEq(stats.bestWeek(wa_events, "2026-08-03", NOW), 4,
+        "best_week: 4");
+      assertEq(stats.activeDays(wa_events), 6,
+        "active_days: 6");
+
+      /* ============================================================ */
+      /*  test_weekly_average_respects_start_date                      */
+      /* ============================================================ */
+      assertEq(stats.weeklyAverage([ev(0)], "2026-08-10", NOW), 1.0,
+        "weekly_average respects start_date");
+
+      /* ============================================================ */
+      /*  test_trend_up                                                */
+      /* ============================================================ */
+      log.innerHTML += "\n=== Trend ===\n";
+      const tUpStart = new Date(NOW); tUpStart.setDate(tUpStart.getDate() - 35);
+      const tUpStartStr = tUpStart.getFullYear() + "-"
+        + String(tUpStart.getMonth() + 1).padStart(2, "0") + "-"
+        + String(tUpStart.getDate()).padStart(2, "0");
+      const tUpEvents = [];
+      [1, 2, 3, 4, 5].forEach((count, w) => {
+        for (let i = 0; i < count; i++) {
+          const d = new Date(PREV_MONDAY);
+          d.setDate(d.getDate() - 7 * (4 - w) + i);
+          const iso = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0")
+            + "-" + String(d.getDate()).padStart(2, "0") + "T00:00";
+          tUpEvents.push({ occurred_at: iso, value: 1 });
+        }
+      });
+      const tUp = stats.trend(tUpEvents, tUpStartStr, NOW, 4);
+      assertEq(tUp.direction, "up", "trend_up: direction = up");
+      assert(tUp.recent > tUp.previous, "trend_up: recent > previous");
+
+      /* ============================================================ */
+      /*  test_trend_down                                              */
+      /* ============================================================ */
+      const tDnEvents = [];
+      [5, 4, 3, 2, 1].forEach((count, w) => {
+        for (let i = 0; i < count; i++) {
+          const d = new Date(PREV_MONDAY);
+          d.setDate(d.getDate() - 7 * (4 - w) + i);
+          const iso = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0")
+            + "-" + String(d.getDate()).padStart(2, "0") + "T00:00";
+          tDnEvents.push({ occurred_at: iso, value: 1 });
+        }
+      });
+      const tDn = stats.trend(tDnEvents, tUpStartStr, NOW, 4);
+      assertEq(tDn.direction, "down", "trend_down: direction = down");
+
+      /* ============================================================ */
+      /*  test_trend_insufficient_data_is_stable                       */
+      /* ============================================================ */
+      const tStEvents = [ev(0), ev(1)];
+      const tSt = stats.trend(tStEvents, "2026-08-10", NOW);
+      assertEq(tSt.direction, "stable", "trend_stable: direction = stable");
+
+      /* ============================================================ */
+      /*  test_consistency_streak_weekly                               */
+      /* ============================================================ */
+      log.innerHTML += "\n=== Streaks ===\n";
+      const cs_events = [];
+      for (let w = 0; w < 2; w++) {
+        for (let i = 0; i < 4; i++) {
+          const d = new Date(PREV_MONDAY);
+          d.setDate(d.getDate() - 7 * w + i);
+          const iso = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0")
+            + "-" + String(d.getDate()).padStart(2, "0") + "T00:00";
+          cs_events.push({ occurred_at: iso, value: 1 });
+        }
+      }
+      cs_events.push(ev(0), ev(1));
+      assertEq(stats.consistencyStreak(baseHabit(), cs_events, NOW), 2,
+        "streak_weekly: 2");
+
+      /* ============================================================ */
+      /*  test_consistency_streak_daily                                */
+      /* ============================================================ */
+      const csDailyHabit = baseHabit({ frequency_type: "daily", frequency_target: 1 });
+      const csDailyEvents = [ev(6), ev(5), ev(4)];
+      assertEq(stats.consistencyStreak(csDailyHabit, csDailyEvents, NOW), 3,
+        "streak_daily: 3");
+
+      /* ============================================================ */
+      /*  test_suggestion_increase_when_exceeding                      */
+      /* ============================================================ */
+      log.innerHTML += "\n=== Goal Suggestions ===\n";
+      const sgStart = new Date(NOW); sgStart.setDate(sgStart.getDate() - 42);
+      const sgStartStr = sgStart.getFullYear() + "-"
+        + String(sgStart.getMonth() + 1).padStart(2, "0") + "-"
+        + String(sgStart.getDate()).padStart(2, "0");
+      const sgIncEvents = [];
+      [2, 3, 4, 6, 6, 5].forEach((count, w) => {
+        for (let i = 0; i < count; i++) {
+          const d = new Date(MONDAY);
+          d.setDate(d.getDate() - 7 * (5 - w) + i);
+          const iso = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0")
+            + "-" + String(d.getDate()).padStart(2, "0") + "T00:00";
+          sgIncEvents.push({ occurred_at: iso, value: 1 });
+        }
+      });
+      const sgInc = stats.goalSuggestion(baseHabit(), sgIncEvents, NOW);
+      assert(sgInc !== null, "suggestion_increase: not null");
+      assertEq(sgInc.kind, "increase", "suggestion_increase: kind = increase");
+      assert(sgInc.suggested_target >= 5, "suggestion_increase: target >= 5");
+
+      /* ============================================================ */
+      /*  test_suggestion_decrease_when_struggling                     */
+      /* ============================================================ */
+      const sgDecEvents = [];
+      [4, 3, 2, 1, 1, 0].forEach((count, w) => {
+        for (let i = 0; i < count; i++) {
+          const d = new Date(MONDAY);
+          d.setDate(d.getDate() - 7 * (5 - w) + i);
+          const iso = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0")
+            + "-" + String(d.getDate()).padStart(2, "0") + "T00:00";
+          sgDecEvents.push({ occurred_at: iso, value: 1 });
+        }
+      });
+      const sgDec = stats.goalSuggestion(baseHabit(), sgDecEvents, NOW);
+      assert(sgDec !== null, "suggestion_decrease: not null");
+      assertEq(sgDec.kind, "decrease", "suggestion_decrease: kind = decrease");
+
+      /* ============================================================ */
+      /*  test_suggestion_none_with_little_data                        */
+      /* ============================================================ */
+      const sgNoneEvents = [ev(0), ev(1)];
+      const sgNoneHabit = baseHabit({ start_date: "2026-08-12" });
+      assertEq(stats.goalSuggestion(sgNoneHabit, sgNoneEvents, NOW), null,
+        "suggestion_none: little data → null");
+
+      /* ============================================================ */
+      /*  test_suggestion_none_when_on_track                           */
+      /* ============================================================ */
+      const sgOnTrackEvents = [];
+      [0, 4, 4, 3, 4, 3].forEach((count, w) => {
+        for (let i = 0; i < count; i++) {
+          const d = new Date(MONDAY);
+          d.setDate(d.getDate() - 7 * (5 - w) + i);
+          const iso = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0")
+            + "-" + String(d.getDate()).padStart(2, "0") + "T00:00";
+          sgOnTrackEvents.push({ occurred_at: iso, value: 1 });
+        }
+      });
+      assertEq(stats.goalSuggestion(baseHabit(), sgOnTrackEvents, NOW), null,
+        "suggestion_none: on track → null");
+
+      /* ============================================================ */
+      /*  test_insights_empty_with_no_data                             */
+      /* ============================================================ */
+      log.innerHTML += "\n=== Insights ===\n";
+      assertDeep(stats.insights(baseHabit(), [], NOW), [],
+        "insights_empty: no data → []");
+
+      /* ============================================================ */
+      /*  test_insights_weekly_frequency                               */
+      /* ============================================================ */
+      const iw_events = [ev(0), ev(1), ev(2), ev(3)];
+      const iw_texts = stats.insights(baseHabit(), iw_events, NOW);
+      assert(iw_texts.some(t => t.includes("media")), "insights_weekly: contains 'media'");
+
+      /* ============================================================ */
+      /*  test_insights_main_time_of_day                               */
+      /* ============================================================ */
+      const itd_events = [ev(0, 21), ev(1, 21), ev(2, 21), ev(3, 21), ev(4, 22)];
+      const itd_texts = stats.insights(baseHabit(), itd_events, NOW);
+      assert(itd_texts.some(t => t.includes("principalmente")), "insights_time: contains 'principalmente'");
+
+      /* ============================================================ */
+      /*  test_insights_supera_objetivo                                */
+      /* ============================================================ */
+      const isoStart = new Date(NOW); isoStart.setDate(isoStart.getDate() - 21);
+      const isoStartStr = isoStart.getFullYear() + "-"
+        + String(isoStart.getMonth() + 1).padStart(2, "0") + "-"
+        + String(isoStart.getDate()).padStart(2, "0");
+      const iso_events = [];
+      for (let w = 0; w < 3; w++) {
+        const weekStart = new Date(MONDAY);
+        weekStart.setDate(weekStart.getDate() - 7 * (2 - w));
+        for (let i = 0; i < 5; i++) {
+          const d = new Date(weekStart);
+          d.setDate(d.getDate() + i);
+          const iso = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0")
+            + "-" + String(d.getDate()).padStart(2, "0") + "T00:00";
+          iso_events.push({ occurred_at: iso, value: 1 });
+        }
+      }
+      const iso_texts = stats.insights(baseHabit(), iso_events, NOW);
+      assert(iso_texts.some(t => t.includes("superado tu objetivo")),
+        "insights_supera: contains 'superado tu objetivo'");
+
+      /* ============================================================ */
+      /*  test_habit_stats_fields                                      */
+      /* ============================================================ */
+      log.innerHTML += "\n=== habitStats ===\n";
+      const hs_events = [ev(0), ev(1), ev(2)];
+      const hs = stats.habitStats(baseHabit(), hs_events, NOW);
+      assertEq(hs.total, 3, "habit_stats: total = 3");
+      assertEq(hs.this_week, 3, "habit_stats: this_week = 3");
+      assertEq(hs.active_days, 3, "habit_stats: active_days = 3");
+      assertEq(hs.goal.this_week, 3, "habit_stats: goal.this_week = 3");
+      assert("week_average" in hs, "habit_stats: has week_average");
+      assert("trend" in hs, "habit_stats: has trend");
+
+      /* ============================================================ */
+      /*  test_format_duration                                         */
+      /* ============================================================ */
+      log.innerHTML += "\n=== formatDuration ===\n";
+      assertEq(stats.formatDuration(null), "", "format_duration: null → ''");
+      assertEq(stats.formatDuration(45), "45 min", "format_duration: 45 → '45 min'");
+      assertEq(stats.formatDuration(60), "1 h", "format_duration: 60 → '1 h'");
+      assertEq(stats.formatDuration(95), "1 h 35 min", "format_duration: 95 → '1 h 35 min'");
+
+      /* ============================================================ */
+      /*  Summary                                                     */
+      /* ============================================================ */
+      summary.innerHTML = `<strong>${passed} passed, ${failed} failed</strong> (${passed + failed} total)`;
+      if (failed > 0) summary.style.color = "#f87171";
+      else summary.style.color = "#4ade80";
+      document.title = failed === 0 ? "PASS" : "FAIL";
+    }
+
+    run();
+  </script>
+</body>
+</html>
