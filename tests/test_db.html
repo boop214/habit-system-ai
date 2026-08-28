@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>db.js — IndexedDB Tests</title>
+  <style>
+    body { font-family: monospace; margin: 20px; background: #111; color: #eee; }
+    .pass { color: #4ade80; }
+    .fail { color: #f87171; }
+    #log { white-space: pre-wrap; line-height: 1.6; }
+    #summary { font-size: 1.2em; margin-top: 20px; padding: 10px; border-top: 1px solid #333; }
+  </style>
+</head>
+<body>
+  <h2>db.js — IndexedDB Isolated Tests</h2>
+  <div id="log"></div>
+  <div id="summary"></div>
+
+  <script src="/static/js/db.js"></script>
+  <script>
+    "use strict";
+    const log = document.getElementById("log");
+    const summary = document.getElementById("summary");
+    let passed = 0, failed = 0;
+
+    function assert(cond, msg) {
+      if (cond) { passed++; log.innerHTML += `<span class="pass">  PASS</span> ${msg}\n`; }
+      else { failed++; log.innerHTML += `<span class="fail">  FAIL</span> ${msg}\n`; }
+    }
+    function assertEq(a, b, msg) { assert(a === b, `${msg} — expected ${JSON.stringify(b)}, got ${JSON.stringify(a)}`); }
+    function assertDeep(a, b, msg) { assert(JSON.stringify(a) === JSON.stringify(b), `${msg} — expected ${JSON.stringify(b)}, got ${JSON.stringify(a)}`); }
+
+    async function run() {
+      // Open a fresh DB
+      const db = await habitDB.open();
+      assert(db !== null, "DB opens successfully");
+      assert(db.objectStoreNames.contains("habits"), "habits store exists");
+      assert(db.objectStoreNames.contains("events"), "events store exists");
+      assert(db.objectStoreNames.contains("identities"), "identities store exists");
+      assert(db.objectStoreNames.contains("obstacles"), "obstacles store exists");
+      assert(db.objectStoreNames.contains("identity_links"), "identity_links store exists");
+      assert(db.objectStoreNames.contains("daily_notes"), "daily_notes store exists");
+      assert(db.objectStoreNames.contains("reviews"), "reviews store exists");
+      assert(db.objectStoreNames.contains("settings"), "settings store exists");
+      assert(db.objectStoreNames.contains("feedback"), "feedback store exists");
+      habitDB.close(); // properly close and clear cached connection
+
+      // --- Habits CRUD ---
+      log.innerHTML += "\n=== Habits CRUD ===\n";
+      const h1 = await habitDB.createHabit({
+        name: "Leer", type: "duration", unit: "min", target_value: 10,
+        frequency_type: "weekly", frequency_target: 4,
+        cue: "Después de cenar", start_date: "2026-01-01",
+        frequency_days: [1, 2, 3], reminder_days: [1, 3, 5],
+        identity_id: null, is_demo: false,
+      });
+      assert(h1.id > 0, "createHabit returns id");
+      assertEq(h1.name, "Leer", "createHabit name");
+      assertEq(h1.type, "duration", "createHabit type");
+      assertEq(h1.frequency_target, 4, "createHabit frequency_target");
+      assertDeep(h1.frequency_days, [1, 2, 3], "createHabit frequency_days as array");
+      assertDeep(h1.reminder_days, [1, 3, 5], "createHabit reminder_days as array");
+      assertEq(h1.active, true, "createHabit active defaults true");
+      assertEq(h1.is_demo, false, "createHabit is_demo defaults false");
+      assert(h1.created_at, "createHabit has created_at");
+
+      const h1get = await habitDB.getHabit(h1.id);
+      assertEq(h1get.name, "Leer", "getHabit returns correct habit");
+      assertDeep(h1get.frequency_days, [1, 2, 3], "getHabit frequency_days is array");
+
+      const h1upd = await habitDB.updateHabit(h1.id, { name: "Leer 20 min", target_value: 20 });
+      assertEq(h1upd.name, "Leer 20 min", "updateHabit name");
+      assertEq(h1upd.target_value, 20, "updateHabit target_value");
+      assertEq(h1upd.cue, "Después de cenar", "updateHabit preserves cue");
+
+      const h2 = await habitDB.createHabit({
+        name: "Correr", type: "distance", unit: "km", target_value: 5,
+        frequency_type: "weekly", frequency_target: 3, start_date: "2026-01-01",
+      });
+      const allHabits = await habitDB.listHabits();
+      assertEq(allHabits.length, 2, "listHabits returns 2");
+      const inactiveHabits = await habitDB.listHabits(false);
+      assertEq(inactiveHabits.length, 2, "listHabits active only");
+
+      // --- Events CRUD ---
+      log.innerHTML += "\n=== Events CRUD ===\n";
+      const e1 = await habitDB.createEvent(h1.id, "2026-08-28T10:00", {
+        value: 15, unit: "min", duration: 15, notes: "Good session",
+      });
+      assert(e1.id > 0, "createEvent returns id");
+      assertEq(e1.habit_id, h1.id, "createEvent habit_id");
+      assertEq(e1.value, 15, "createEvent value");
+      assertEq(e1.notes, "Good session", "createEvent notes");
+
+      const e2 = await habitDB.createEvent(h1.id, "2026-08-29T11:00", { value: 10 });
+      const evSince = await habitDB.listEventsSince(h1.id, "2026-08-28T00:00");
+      assertEq(evSince.length, 2, "listEventsSince returns 2 events");
+
+      const evAll = await habitDB.listEvents(h1.id);
+      assertEq(evAll.length, 2, "listEvents by habit_id");
+
+      const evCount = await habitDB.habitEventCount(h1.id);
+      assertEq(evCount, 2, "habitEventCount");
+
+      const e1upd = await habitDB.updateEvent(e1.id, { value: 20, notes: "Updated" });
+      assertEq(e1upd.value, 20, "updateEvent value");
+      assertEq(e1upd.notes, "Updated", "updateEvent notes");
+
+      await habitDB.deleteEvent(e2.id);
+      const evAfterDel = await habitDB.listEvents(h1.id);
+      assertEq(evAfterDel.length, 1, "deleteEvent removes event");
+
+      // --- Identities CRUD ---
+      log.innerHTML += "\n=== Identities CRUD ===\n";
+      const i1 = await habitDB.createIdentity({
+        name: "Lector", icon: "book", color: "#3b82f6",
+        description: "Una persona que lee",
+      });
+      assert(i1.id > 0, "createIdentity returns id");
+      assertEq(i1.name, "Lector", "createIdentity name");
+
+      const i2 = await habitDB.createIdentity({ name: "Runner", icon: "run" });
+      const allIds = await habitDB.listIdentities();
+      assertEq(allIds.length, 2, "listIdentities returns 2");
+
+      const i1upd = await habitDB.updateIdentity(i1.id, { name: "Lector ávido" });
+      assertEq(i1upd.name, "Lector ávido", "updateIdentity name");
+
+      // Link habit to identity
+      await habitDB.updateHabit(h1.id, { identity_id: i1.id });
+      const hLinked = await habitDB.getHabit(h1.id);
+      assertEq(hLinked.identity_id, i1.id, "habit linked to identity");
+
+      // Delete identity → habits lose link
+      await habitDB.deleteIdentity(i2.id);
+      const hAfterIdDel = await habitDB.getHabit(h2.id);
+      assertEq(hAfterIdDel.identity_id, null, "deleteIdentity unlinks habits");
+      const idsAfterDel = await habitDB.listIdentities();
+      assertEq(idsAfterDel.length, 1, "deleteIdentity removes identity");
+
+      // --- Identity Links ---
+      log.innerHTML += "\n=== Identity Links ===\n";
+      const link1 = await habitDB.setIdentityLink(h1.id, i1.id, "linked", "semantic", 0.8);
+      assert(link1.id > 0, "setIdentityLink returns id");
+      assertEq(link1.status, "linked", "setIdentityLink status");
+
+      const linkGet = await habitDB.getIdentityLink(h1.id, i1.id);
+      assertEq(linkGet.id, link1.id, "getIdentityLink finds link");
+
+      const linksByHabit = await habitDB.listIdentityLinks(h1.id);
+      assertEq(linksByHabit.length, 1, "listIdentityLinks by habit_id");
+
+      // Upsert: update existing link
+      await habitDB.setIdentityLink(h1.id, i1.id, "rejected", "semantic", 0.3);
+      const linkUpd = await habitDB.getIdentityLink(h1.id, i1.id);
+      assertEq(linkUpd.status, "rejected", "setIdentityLink upserts");
+
+      await habitDB.deleteIdentityLink(h1.id, i1.id);
+      const linkAfterDel = await habitDB.getIdentityLink(h1.id, i1.id);
+      assert(linkAfterDel === null, "deleteIdentityLink removes link");
+
+      // --- Obstacles ---
+      log.innerHTML += "\n=== Obstacles ===\n";
+      const ob1 = await habitDB.createObstacle(h1.id, "Es difícil", "Nota", "hard");
+      assert(ob1.id > 0, "createObstacle returns id");
+      assertEq(ob1.obstacle, "Es difícil", "createObstacle obstacle");
+      assertEq(ob1.type, "hard", "createObstacle type");
+
+      const ob2 = await habitDB.createObstacle(h1.id, "Es difícil", null, "hard");
+      const ob3 = await habitDB.createObstacle(h1.id, "Es difícil", null, "hard");
+      const ob4 = await habitDB.createObstacle(h1.id, "No tengo tiempo", null, "notime");
+
+      const counts = await habitDB.obstacleCounts(h1.id);
+      assertEq(counts.length, 2, "obstacleCounts returns 2 unique");
+      assertEq(counts[0].obstacle, "Es difícil", "obstacleCounts sorted by count");
+      assertEq(counts[0].count, 3, "obstacleCounts count for 'hard'");
+
+      const mainOb = await habitDB.mainObstacle(h1.id);
+      assert(mainOb !== null, "mainObstacle detected");
+      assertEq(mainOb.obstacle, "Es difícil", "mainObstacle is 'hard'");
+      assertEq(mainOb.count, 3, "mainObstacle count");
+
+      // --- Daily Notes ---
+      log.innerHTML += "\n=== Daily Notes ===\n";
+      const note1 = await habitDB.saveDailyNote("2026-08-28", "Plan for tomorrow");
+      assertEq(note1.date, "2026-08-28", "saveDailyNote date");
+      assertEq(note1.content, "Plan for tomorrow", "saveDailyNote content");
+
+      const noteGet = await habitDB.getDailyNote("2026-08-28");
+      assertEq(noteGet.content, "Plan for tomorrow", "getDailyNote returns content");
+
+      // Upsert note
+      const note2 = await habitDB.saveDailyNote("2026-08-28", "Updated plan");
+      assertEq(note2.content, "Updated plan", "saveDailyNote upserts");
+
+      // --- Reviews ---
+      log.innerHTML += "\n=== Reviews ===\n";
+      const rev1 = await habitDB.saveReviewAnswer("2026-08-25", "Keep going");
+      assertEq(rev1.week_start, "2026-08-25", "saveReviewAnswer week_start");
+      assertEq(rev1.answer, "Keep going", "saveReviewAnswer answer");
+
+      const revGet = await habitDB.getReviewAnswer("2026-08-25");
+      assertEq(revGet.answer, "Keep going", "getReviewAnswer returns answer");
+
+      // Upsert review
+      const rev2 = await habitDB.saveReviewAnswer("2026-08-25", "Updated answer");
+      assertEq(rev2.answer, "Updated answer", "saveReviewAnswer upserts");
+
+      // --- Settings ---
+      log.innerHTML += "\n=== Settings ===\n";
+      await habitDB.setSetting("theme", "dark");
+      const theme = await habitDB.getSetting("theme");
+      assertEq(theme, "dark", "setSetting/getSetting works");
+
+      await habitDB.setSetting("theme", "light");
+      const theme2 = await habitDB.getSetting("theme");
+      assertEq(theme2, "light", "setSetting overwrites");
+
+      await habitDB.setSetting("theme", "");
+      const theme3 = await habitDB.getSetting("theme");
+      assert(theme3 === null, "setSetting empty string removes key");
+
+      // --- Feedback ---
+      log.innerHTML += "\n=== Feedback ===\n";
+      const fb1 = await habitDB.createFeedback("suggestion", "Add dark mode", { browser: "Chrome" });
+      assert(fb1.id > 0, "createFeedback returns id");
+      assertEq(fb1.type, "suggestion", "createFeedback type");
+      assertDeep(fb1.technical_info, { browser: "Chrome" }, "createFeedback technical_info");
+
+      const fbList = await habitDB.listFeedback();
+      assertEq(fbList.length, 1, "listFeedback returns 1");
+
+      // --- Cascade delete habit ---
+      log.innerHTML += "\n=== Cascade Delete ===\n";
+      const h3 = await habitDB.createHabit({
+        name: "To Delete", type: "boolean", frequency_type: "weekly",
+        frequency_target: 1, start_date: "2026-01-01", identity_id: i1.id,
+      });
+      await habitDB.createEvent(h3.id, "2026-08-28T12:00");
+      await habitDB.createObstacle(h3.id, "Test obstacle");
+      await habitDB.setIdentityLink(h3.id, i1.id, "linked", "semantic");
+
+      const evBefore = await habitDB.listEvents(h3.id);
+      assertEq(evBefore.length, 1, "cascade: event exists before delete");
+      const linksBefore = await habitDB.listIdentityLinks(h3.id);
+      assertEq(linksBefore.length, 1, "cascade: link exists before delete");
+
+      await habitDB.deleteHabit(h3.id);
+      const evAfter = await habitDB.listEvents(h3.id);
+      assertEq(evAfter.length, 0, "cascade: events deleted");
+      const linksAfter = await habitDB.listIdentityLinks(h3.id);
+      assertEq(linksAfter.length, 0, "cascade: identity_links deleted");
+      const obsAfter = await habitDB.listObstacles(h3.id);
+      assertEq(obsAfter.length, 0, "cascade: obstacles deleted");
+
+      // --- hasAnyHabit ---
+      log.innerHTML += "\n=== hasAnyHabit ===\n";
+      const hasAny = await habitDB.hasAnyHabit();
+      assertEq(hasAny, true, "hasAnyHabit true when habits exist");
+
+      // --- identityHabitCount ---
+      log.innerHTML += "\n=== identityHabitCount ===\n";
+      const ihCount = await habitDB.identityHabitCount(i1.id);
+      assertEq(ihCount, 1, "identityHabitCount");
+
+      // --- Reset ---
+      log.innerHTML += "\n=== Reset ===\n";
+      await habitDB.resetAllData();
+      const habitsAfterReset = await habitDB.listHabits(true);
+      assertEq(habitsAfterReset.length, 0, "resetAllData clears habits");
+      const idsAfterReset = await habitDB.listIdentities();
+      assertEq(idsAfterReset.length, 0, "resetAllData clears identities");
+      const settingsTheme = await habitDB.getSetting("theme");
+      assert(settingsTheme === null, "resetAllData clears settings");
+
+      // --- nowIso format ---
+      log.innerHTML += "\n=== nowIso ===\n";
+      const ts = habitDB._nowIso();
+      assert(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(ts), "nowIso format is YYYY-MM-DDTHH:MM:SS");
+
+      // --- Summary ---
+      summary.innerHTML = `<span class="${failed === 0 ? 'pass' : 'fail'}">${passed} passed, ${failed} failed</span> (${passed + failed} total)`;
+    }
+
+    run().catch((err) => {
+      log.innerHTML += `\n<span class="fail">ERROR: ${err.message}</span>\n${err.stack}\n`;
+      summary.innerHTML = `<span class="fail">Test runner failed</span>`;
+    });
+  </script>
+</body>
+</html>
