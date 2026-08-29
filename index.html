@@ -1,3 +1,4 @@
+@'
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -8,8 +9,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Habit System" />
-  <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png" />
-  <link rel="manifest" href="/static/manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
+  <link rel="manifest" href="./manifest.webmanifest" />
   <script>
     try {
       if (localStorage.getItem("habitfy_theme") === "dark") {
@@ -18,7 +19,7 @@
     } catch (e) {}
   </script>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%234f7cff'/%3E%3Ctext x='16' y='23' font-size='18' text-anchor='middle' fill='white'%3E%E2%9C%93%3C/text%3E%3C/svg%3E" />
-  <link rel="stylesheet" href="/static/css/styles.css" />
+  <link rel="stylesheet" href="./css/styles.css" />
 </head>
 <body>
   <header class="topbar">
@@ -54,25 +55,26 @@
     </div>
   </template>
 
-  <script src="/static/js/periods.js"></script>
-  <script src="/static/js/db.js"></script>
-  <script src="/static/js/stats.js"></script>
-  <script src="/static/js/obstacles.js"></script>
-  <script src="/static/js/semantics.js"></script>
-  <script src="/static/js/identity.js"></script>
-  <script src="/static/js/seed.js"></script>
-  <script src="/static/js/services.js"></script>
-  <script src="/static/js/api.js"></script>
-  <script src="/static/js/format.js"></script>
-  <script src="/static/js/charts.js"></script>
-  <script src="/static/js/app.js"></script>
+  <script src="./js/periods.js"></script>
+  <script src="./js/db.js"></script>
+  <script src="./js/stats.js"></script>
+  <script src="./js/obstacles.js"></script>
+  <script src="./js/semantics.js"></script>
+  <script src="./js/identity.js"></script>
+  <script src="./js/seed.js"></script>
+  <script src="./js/services.js"></script>
+  <script src="./js/api.js"></script>
+  <script src="./js/format.js"></script>
+  <script src="./js/charts.js"></script>
+  <script src="./js/app.js"></script>
   <script>
     if ("serviceWorker" in navigator &&
         (location.protocol === "https:" ||
          location.hostname === "localhost" ||
          location.hostname === "127.0.0.1")) {
-      navigator.serviceWorker.register("/service-worker.js").catch(function () {});
+      navigator.serviceWorker.register("./service-worker.js").catch(function () {});
     }
   </script>
 </body>
 </html>
+'@ | Set-Content .\index.html -Encoding UTF8
