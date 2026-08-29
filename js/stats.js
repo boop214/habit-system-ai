@@ -10,6 +10,7 @@
 /* ------------------------------------------------------------------ */
 
 function eventDt(event) {
+  if (!event || !event.occurred_at) return null;
   return periods.parseDt(event.occurred_at);
 }
 
@@ -17,7 +18,7 @@ function countIn(events, start, end) {
   let n = 0;
   for (const e of events) {
     const d = eventDt(e);
-    if (d >= start && d < end) n++;
+    if (d && d >= start && d < end) n++;
   }
   return n;
 }
