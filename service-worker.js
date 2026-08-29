@@ -1,4 +1,3 @@
-@'
 const CACHE_NAME = "habit-system-v2";
 
 const BASE = new URL("./", self.location).pathname;
@@ -89,4 +88,3 @@ self.addEventListener("fetch", (event) => {
       })
   );
 });
-'@ | Set-Content .\service-worker.js -Encoding UTF8
