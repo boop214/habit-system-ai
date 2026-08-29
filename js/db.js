@@ -295,9 +295,11 @@ const habitDB = (() => {
   async function getIdentity(id) {
     const db = await open();
     const store = _get(db, "identities", "readonly");
-    const row = await _req(store, "get", id);
+    const key = Number(id);
+    const row = await _req(store, "get", key);
     return _identityFromStore(row);
   }
+
 
   async function createIdentity(data) {
     const ts = nowIso();
